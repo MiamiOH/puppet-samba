@@ -1,7 +1,9 @@
 # == Class samba::server::ads
 # This module join samba server to Active Dirctory
 #
-class samba::server::ads($ensure = present,
+class samba::server::ads (
+  $ensure                     = present,
+  $manage_winbind             = true,
   $winbind_acct               = 'admin',
   $winbind_pass               = 'SecretPass',
   $realm                      = 'domain.com',
@@ -22,7 +24,8 @@ class samba::server::ads($ensure = present,
   $map_archive                = 'no',
   $map_readonly               = 'no',
   $target_ou                  = 'Nix_Mashine',
-  $verify_query_users         = true) {
+  $verify_query_users         = true,
+) {
 
   $krb5_user_package = $::osfamily ? {
     'RedHat' => 'krb5-workstation',
@@ -30,8 +33,7 @@ class samba::server::ads($ensure = present,
   }
 
   if $::osfamily == 'RedHat' {
-#   if $::operatingsystemrelease =~ /^(6|7)\./ {
-    if $::operatingsystemrelease =~ /^(6)\./ {
+    if $::operatingsystemrelease =~ /^(6|7)\./ {
       $winbind_package = 'samba-winbind'
     } else {
       $winbind_package = 'samba-common'
@@ -42,28 +44,37 @@ class samba::server::ads($ensure = present,
 
   package{
     $krb5_user_package: ensure => installed;
-    $winbind_package:   ensure => installed;
     'expect':           ensure => installed;
   }
 
-  include samba::server::config
-  include samba::server::winbind
+  if $manage_winbind {
+    package{ $winbind_package: ensure => installed }
+    include samba::server::winbind
 
-  # notify winbind
-  samba::server::option {
-    'realm':                        value => $realm,
-    notify                                => Class['Samba::Server::Winbind'];
-    'winbind uid':                  value => $winbind_uid,
-    notify                                => Class['Samba::Server::Winbind'];
-    'winbind gid':                  value => $winbind_gid,
-    notify                                => Class['Samba::Server::Winbind'];
-    'winbind enum groups':          value => $winbind_enum_groups,
-    notify                                => Class['Samba::Server::Winbind'];
-    'winbind enum users':           value => $winbind_enum_users,
-    notify                                => Class['Samba::Server::Winbind'];
-    'winbind use default domain':   value => $winbind_use_default_domain,
-    notify                                => Class['Samba::Server::Winbind'];
+    # notify winbind
+    samba::server::option {
+      'realm':                        value => $realm,
+      notify                                => Class['Samba::Server::Winbind'];
+      'winbind uid':                  value => $winbind_uid,
+      notify                                => Class['Samba::Server::Winbind'];
+      'winbind gid':                  value => $winbind_gid,
+      notify                                => Class['Samba::Server::Winbind'];
+      'winbind enum groups':          value => $winbind_enum_groups,
+      notify                                => Class['Samba::Server::Winbind'];
+      'winbind enum users':           value => $winbind_enum_users,
+      notify                                => Class['Samba::Server::Winbind'];
+      'winbind use default domain':   value => $winbind_use_default_domain,
+      notify                                => Class['Samba::Server::Winbind'];
+    }
+    $script_require = [ Package[$krb5_user_package, $winbind_package, 'expect'],
+      Augeas['samba-realm', 'samba-security', 'samba-winbind enum users',
+        'samba-winbind enum groups', 'samba-winbind uid', 'samba-winbind gid',
+        'samba-winbind use default domain'], Service['winbind'] ]
+  } else {
+    $script_require = [ Package[$krb5_user_package, 'expect'], Augeas['samba-security'] ]
   }
+
+  include samba::server::config
 
   samba::server::option {
     'acl group control':            value => $acl_group_control;
@@ -105,10 +116,7 @@ class samba::server::ads($ensure = present,
     group   => root,
     mode    => '0755',
     content => template("${module_name}/verify_active_directory.erb"),
-    require => [ Package[$krb5_user_package, $winbind_package, 'expect'],
-      Augeas['samba-realm', 'samba-security', 'samba-winbind enum users',
-        'samba-winbind enum groups', 'samba-winbind uid', 'samba-winbind gid',
-        'samba-winbind use default domain'], Service['winbind'] ],
+    require => $script_require,
   }
 
   file {'configure_active_directory':
@@ -118,16 +126,13 @@ class samba::server::ads($ensure = present,
     group   => root,
     mode    => '0755',
     content => template("${module_name}/configure_active_directory.erb"),
-    require => [ Package[$krb5_user_package, $winbind_package, 'expect'],
-      Augeas['samba-realm', 'samba-security', 'samba-winbind enum users',
-        'samba-winbind enum groups', 'samba-winbind uid', 'samba-winbind gid',
-        'samba-winbind use default domain'], Service['winbind'] ],
+    require => $script_require,
   }
 
   exec {'join-active-directory':
     # join the domain configured in samba.conf
     command => '/sbin/configure_active_directory -j',
     unless  => '/sbin/verify_active_directory',
-    require => [ File['configure_active_directory', 'verify_active_directory'], Service['winbind'] ],
+    require => [ File['configure_active_directory', 'verify_active_directory'] ],
   }
 }
