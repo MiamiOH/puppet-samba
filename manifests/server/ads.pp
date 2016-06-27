@@ -71,7 +71,8 @@ class samba::server::ads (
         'samba-winbind enum groups', 'samba-winbind uid', 'samba-winbind gid',
         'samba-winbind use default domain'], Service['winbind'] ]
   } else {
-    $script_require = [ Package[$krb5_user_package, 'expect'], Augeas['samba-security'] ]
+    samba::server::option { 'realm': value => $realm }
+    $script_require = [ Package[$krb5_user_package, 'expect'], Augeas['samba-realm', 'samba-security'] ]
   }
 
   include samba::server::config
@@ -114,7 +115,7 @@ class samba::server::ads (
     path    => '/sbin/verify_active_directory',
     owner   => root,
     group   => root,
-    mode    => '0755',
+    mode    => '0700',
     content => template("${module_name}/verify_active_directory.erb"),
     require => $script_require,
   }
@@ -124,7 +125,7 @@ class samba::server::ads (
     path    => '/sbin/configure_active_directory',
     owner   => root,
     group   => root,
-    mode    => '0755',
+    mode    => '0700',
     content => template("${module_name}/configure_active_directory.erb"),
     require => $script_require,
   }

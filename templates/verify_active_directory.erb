@@ -49,6 +49,7 @@ do_testjoin
 if [ $? -ne 0 ]; then
   # get verbose failure info
   do_testjoin -d3
+  exit 1
 fi
 
 
@@ -82,7 +83,7 @@ for attempt in $(seq 1 $max_attempts); do
     has_tgt=0
     break
   fi
-  echo "." >&2
+  echo -n "." >&2
   sleep 3
 done
 
@@ -99,6 +100,8 @@ else
     echo "ERROR: return user list from AD is empty" >&2
     success=false
   fi
+<% else -%>
+  success=true
 <% end -%>
 
   # get rid of cred cache
